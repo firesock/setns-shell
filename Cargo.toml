@@ -1,0 +1,11 @@
+[package]
+name = "setns-shell"
+version = "0.1.0"
+authors = ["Awad Mackie <firesock.serwalek@gmail.com>"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+libc = "0.2"
