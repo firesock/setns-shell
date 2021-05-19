@@ -1,49 +1,117 @@
+use libc::{c_char, c_int, c_void, size_t};
+use std::cell::UnsafeCell;
+use std::ptr::null;
+
+// static mut seems frowned on, try the new way
+// https://github.com/rust-lang/rust/issues/53639
+// Inherently unsafe, nevertheless only written to by zsh which we can't
+// control, and reset by us, where we don't care about UB
+struct CSharedStruct<T>(UnsafeCell<T>);
+impl<T> CSharedStruct<T> {
+    const fn new(value: T) -> Self {
+        Self(UnsafeCell::new(value))
+    }
+
+    const fn get(&self) -> *mut T {
+        self.0.get()
+    }
+}
+unsafe impl<T> Sync for CSharedStruct<T> {}
+
+// C reprs and any interface with zsh is specified via libc types, including
+// reference/pointer types, to be clear they can be nullable, even if Rust can
+// specify our values via references.
+// Except for function pointers because making them nullable is more annoying
 #[repr(C)]
-struct ModuleFeatures {
-    builtin_array: *const libc::c_void,
-    builtin_count: libc::size_t,
-    condition_array: *const libc::c_void,
-    condition_count: libc::size_t,
-    parameter_array: *const libc::c_void,
-    parameter_count: libc::size_t,
-    math_array: *const libc::c_void,
-    math_count: libc::size_t,
-    abstract_count: libc::size_t,
+struct InnerBuiltinTab {
+    null: *const c_void,
+    name: *const c_char,
+    flags: c_int,
 }
 
-const MODULE_FEATURES: ModuleFeatures = ModuleFeatures {
-    builtin_array: std::ptr::null(),
-    builtin_count: 0,
-    condition_array: std::ptr::null(),
-    condition_count: 0,
-    parameter_array: std::ptr::null(),
-    parameter_count: 0,
-    math_array: std::ptr::null(),
-    math_count: 0,
-    abstract_count: 0,
-};
+#[repr(C)]
+struct BuiltinTab {
+    inner_tab: InnerBuiltinTab,
+    func: extern "C" fn(
+        *const c_void,
+        *const c_void,
+        *const c_void,
+        c_int,
+    ) -> c_int,
+    min_args: c_int,
+    max_args: c_int,
+    func_no: c_int,
+    options: *const c_void,
+    perm_options: *const c_void,
+}
+
+// sizes are built from sizeof math in zsh code, so use size_t
+#[repr(C)]
+struct ModuleFeatures {
+    builtin_array: *const BuiltinTab,
+    builtin_count: size_t,
+    condition_array: *const c_void,
+    condition_count: size_t,
+    parameter_array: *const c_void,
+    parameter_count: size_t,
+    math_array: *const c_void,
+    math_count: size_t,
+    abstract_count: size_t,
+}
+
+static BUILTIN_TAB: CSharedStruct<BuiltinTab> =
+    CSharedStruct::new(BuiltinTab {
+        inner_tab: InnerBuiltinTab {
+            null: null(),
+            name: b"setns_shell\0".as_ptr() as *const c_char,
+            flags: 0,
+        },
+        func: nsenter,
+        min_args: 0,
+        max_args: 0,
+        func_no: 0,
+        options: null(),
+        perm_options: null(),
+    });
+
+static MODULE_FEATURES: CSharedStruct<ModuleFeatures> =
+    CSharedStruct::new(ModuleFeatures {
+        builtin_array: BUILTIN_TAB.get(),
+        builtin_count: 1,
+        condition_array: null(),
+        condition_count: 0,
+        parameter_array: null(),
+        parameter_count: 0,
+        math_array: null(),
+        math_count: 0,
+        abstract_count: 0,
+    });
 
 extern "C" {
     fn featuresarray(
-        module: *const libc::c_void,
+        module: *const c_void,
         features: *const ModuleFeatures,
-    ) -> *const libc::c_void;
+    ) -> *const c_void;
 
     fn handlefeatures(
-        module: *const libc::c_void,
+        module: *const c_void,
         features: *const ModuleFeatures,
-        enables: *const libc::c_void,
-    ) -> libc::c_int;
+        enables: *const c_void,
+    ) -> c_int;
 
     fn setfeatureenables(
-        module: *const libc::c_void,
+        module: *const c_void,
         features: *const ModuleFeatures,
-        e: *const libc::c_void,
-    ) -> libc::c_int;
+        e: *const c_void,
+    ) -> c_int;
 }
 
-#[no_mangle]
-pub extern "C" fn setup_(_module: *const libc::c_void) -> libc::c_int {
+extern "C" fn nsenter(
+    _name: *const c_void,
+    _args: *const c_void,
+    _options: *const c_void,
+    _func_no: c_int,
+) -> c_int {
     println!("Zsh dynamic module in Rust!");
 
     use std::io::Write;
@@ -53,37 +121,38 @@ pub extern "C" fn setup_(_module: *const libc::c_void) -> libc::c_int {
 }
 
 #[no_mangle]
+pub extern "C" fn setup_(_module: *const c_void) -> c_int {
+    return 0;
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn features_(
-    module: *const libc::c_void,
-    features: *mut *const libc::c_void,
-) -> libc::c_int {
-    *features = featuresarray(module, &MODULE_FEATURES as *const ModuleFeatures);
+    module: *const c_void,
+    features: *mut *const c_void,
+) -> c_int {
+    *features = featuresarray(module, MODULE_FEATURES.get());
     return 0;
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn enables_(
-    module: *const libc::c_void,
-    enables: *const libc::c_void,
-) -> libc::c_int {
-    return handlefeatures(module, &MODULE_FEATURES as *const ModuleFeatures, enables);
+    module: *const c_void,
+    enables: *const c_void,
+) -> c_int {
+    return handlefeatures(module, MODULE_FEATURES.get(), enables);
 }
 
 #[no_mangle]
-pub extern "C" fn boot_(_module: *const libc::c_void) -> libc::c_int {
+pub extern "C" fn boot_(_module: *const c_void) -> c_int {
     return 0;
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn cleanup_(module: *const libc::c_void) -> libc::c_int {
-    return setfeatureenables(
-        module,
-        &MODULE_FEATURES as *const ModuleFeatures,
-        std::ptr::null(),
-    );
+pub unsafe extern "C" fn cleanup_(module: *const c_void) -> c_int {
+    return setfeatureenables(module, MODULE_FEATURES.get(), null());
 }
 
 #[no_mangle]
-pub extern "C" fn finish_(_module: *const libc::c_void) -> libc::c_int {
+pub extern "C" fn finish_(_module: *const c_void) -> c_int {
     return 0;
 }
