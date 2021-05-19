@@ -21,7 +21,7 @@ unsafe impl<T> Sync for CSharedStruct<T> {}
 // C reprs and any interface with zsh is specified via libc types, including
 // reference/pointer types, to be clear they can be nullable, even if Rust can
 // specify our values via references.
-// Except for function pointers because making them nullable is more annoying
+// Except for function pointers because marking them nullable is more annoying
 #[repr(C)]
 struct InnerBuiltinTab {
     null: *const c_void,
@@ -153,6 +153,42 @@ pub unsafe extern "C" fn cleanup_(module: *const c_void) -> c_int {
 }
 
 #[no_mangle]
-pub extern "C" fn finish_(_module: *const c_void) -> c_int {
+pub unsafe extern "C" fn finish_(_module: *const c_void) -> c_int {
+    // zsh doesn't guarantee that finish_ is called paired with setup_
+    // success, so rather than using refcounting to track calls, we just
+    // clobber everything on finish_ in an unsafe manner. C has our
+    // pointers and might still be writing to it for all we know!
+    // Also why we used a static chunk of memory rather than the heap,
+    // calling heap 'free'/drop wouldn't be fun
+    let builtintab_p = BUILTIN_TAB.get();
+    let modulefeatures_p = MODULE_FEATURES.get();
+
+    // Duplicate defs to static are because const_fn_fn_ptr_basics is
+    // not in Rust stable
+    // https://github.com/rust-lang/rust/pull/77170 + tracking parent
+    *builtintab_p = BuiltinTab {
+        inner_tab: InnerBuiltinTab {
+            null: null(),
+            name: b"setns_shell\0".as_ptr() as *const c_char,
+            flags: 0,
+        },
+        func: nsenter,
+        min_args: 0,
+        max_args: 0,
+        func_no: 0,
+        options: null(),
+        perm_options: null(),
+    };
+    *modulefeatures_p = ModuleFeatures {
+        builtin_array: builtintab_p,
+        builtin_count: 1,
+        condition_array: null(),
+        condition_count: 0,
+        parameter_array: null(),
+        parameter_count: 0,
+        math_array: null(),
+        math_count: 0,
+        abstract_count: 0,
+    };
     0
 }
