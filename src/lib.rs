@@ -117,12 +117,12 @@ extern "C" fn nsenter(
     use std::io::Write;
     std::io::stdout().flush().unwrap();
 
-    return 0;
+    0
 }
 
 #[no_mangle]
 pub extern "C" fn setup_(_module: *const c_void) -> c_int {
-    return 0;
+    0
 }
 
 #[no_mangle]
@@ -131,7 +131,7 @@ pub unsafe extern "C" fn features_(
     features: *mut *const c_void,
 ) -> c_int {
     *features = featuresarray(module, MODULE_FEATURES.get());
-    return 0;
+    0
 }
 
 #[no_mangle]
@@ -139,20 +139,20 @@ pub unsafe extern "C" fn enables_(
     module: *const c_void,
     enables: *const c_void,
 ) -> c_int {
-    return handlefeatures(module, MODULE_FEATURES.get(), enables);
+    handlefeatures(module, MODULE_FEATURES.get(), enables)
 }
 
 #[no_mangle]
 pub extern "C" fn boot_(_module: *const c_void) -> c_int {
-    return 0;
+    0
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn cleanup_(module: *const c_void) -> c_int {
-    return setfeatureenables(module, MODULE_FEATURES.get(), null());
+    setfeatureenables(module, MODULE_FEATURES.get(), null())
 }
 
 #[no_mangle]
 pub extern "C" fn finish_(_module: *const c_void) -> c_int {
-    return 0;
+    0
 }
