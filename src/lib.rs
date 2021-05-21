@@ -1,3 +1,5 @@
+mod setns;
+
 use libc::{c_char, c_int, c_void, size_t};
 use std::cell::UnsafeCell;
 use std::ptr::null;
@@ -34,7 +36,7 @@ struct BuiltinTab {
     inner_tab: InnerBuiltinTab,
     func: extern "C" fn(
         *const c_void,
-        *const c_void,
+        *const *const c_char,
         *const c_void,
         c_int,
     ) -> c_int,
@@ -66,9 +68,9 @@ static BUILTIN_TAB: CSharedStruct<BuiltinTab> =
             name: b"setns_shell\0".as_ptr() as *const c_char,
             flags: 0,
         },
-        func: nsenter,
-        min_args: 0,
-        max_args: 0,
+        func: setns_shell,
+        min_args: 1,
+        max_args: 1,
         func_no: 0,
         options: null(),
         perm_options: null(),
@@ -106,17 +108,20 @@ extern "C" {
     ) -> c_int;
 }
 
-extern "C" fn nsenter(
+extern "C" fn setns_shell(
     _name: *const c_void,
-    _args: *const c_void,
+    args: *const *const c_char,
     _options: *const c_void,
     _func_no: c_int,
 ) -> c_int {
-    println!("Zsh dynamic module in Rust!");
-
-    use std::io::Write;
-    std::io::stdout().flush().unwrap();
-
+    // TODO: Error handling
+    let container_pid: libc::pid_t = unsafe {
+        // We allow zsh to handle arguments so args MUST only have 1 element
+        // See min/max_args in BUILTIN_TAB
+        let str_pid = std::ffi::CStr::from_ptr(*args).to_str().unwrap();
+        str_pid.parse().unwrap()
+    };
+    setns::enter_container(container_pid);
     0
 }
 
@@ -164,7 +169,7 @@ pub unsafe extern "C" fn finish_(_module: *const c_void) -> c_int {
     let modulefeatures_p = MODULE_FEATURES.get();
 
     // Duplicate defs to static are because const_fn_fn_ptr_basics is
-    // not in Rust stable
+    // not in Rust stable - can't use fn ptr to setns_shell in shared fn
     // https://github.com/rust-lang/rust/pull/77170 + tracking parent
     *builtintab_p = BuiltinTab {
         inner_tab: InnerBuiltinTab {
@@ -172,7 +177,7 @@ pub unsafe extern "C" fn finish_(_module: *const c_void) -> c_int {
             name: b"setns_shell\0".as_ptr() as *const c_char,
             flags: 0,
         },
-        func: nsenter,
+        func: setns_shell,
         min_args: 0,
         max_args: 0,
         func_no: 0,
