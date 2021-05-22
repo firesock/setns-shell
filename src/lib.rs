@@ -1,3 +1,4 @@
+mod parse;
 mod setns;
 
 use libc::{c_char, c_int, c_void, size_t};
@@ -114,15 +115,18 @@ extern "C" fn setns_shell(
     _options: *const c_void,
     _func_no: c_int,
 ) -> c_int {
-    // TODO: Error handling
-    let container_pid: libc::pid_t = unsafe {
-        // We allow zsh to handle arguments so args MUST only have 1 element
-        // See min/max_args in BUILTIN_TAB
-        let str_pid = std::ffi::CStr::from_ptr(*args).to_str().unwrap();
-        str_pid.parse().unwrap()
-    };
-    setns::enter_container(container_pid);
-    0
+    // TODO: Better user error reporting?
+    let parsed = parse::pid_from_args(args);
+    if let Ok(container_pid) = parsed {
+        setns::enter_container(container_pid);
+        0
+    } else {
+        eprintln!(
+            "Unable to parse root pid as pid_t({})",
+            std::any::type_name::<libc::pid_t>(),
+        );
+        1
+    }
 }
 
 #[no_mangle]
