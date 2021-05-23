@@ -118,8 +118,13 @@ extern "C" fn setns_shell(
     // TODO: Better user error reporting?
     let parsed = parse::pid_from_args(args);
     if let Ok(container_pid) = parsed {
-        setns::enter_container(container_pid);
-        0
+        let res = setns::enter_container(container_pid);
+        if let Err(error) = res {
+            eprintln!("Unable to enter container: {}", error);
+            1
+        } else {
+            0
+        }
     } else {
         eprintln!(
             "Unable to parse root pid as pid_t({})",
