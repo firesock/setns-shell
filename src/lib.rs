@@ -1,3 +1,4 @@
+mod env;
 mod parse;
 mod setns;
 
@@ -70,8 +71,8 @@ static BUILTIN_TAB: CSharedStruct<BuiltinTab> =
             flags: 0,
         },
         func: setns_shell,
-        min_args: 1,
-        max_args: 1,
+        min_args: 2,
+        max_args: 2,
         func_no: 0,
         options: null(),
         perm_options: null(),
@@ -116,20 +117,18 @@ extern "C" fn setns_shell(
     _func_no: c_int,
 ) -> c_int {
     // TODO: Better user error reporting?
-    let parsed = parse::pid_from_args(args);
-    if let Ok(container_pid) = parsed {
-        let res = setns::enter_container(container_pid);
+    let parsed = parse::Args::parse(args);
+    if let Ok(parsed_args) = parsed {
+        let res = setns::enter_container(parsed_args.pid);
         if let Err(error) = res {
             eprintln!("Unable to enter container: {}", error);
             1
         } else {
+            env::NSEnv::discover().write(&parsed_args.zwc_data);
             0
         }
     } else {
-        eprintln!(
-            "Unable to parse root pid as pid_t({})",
-            std::any::type_name::<libc::pid_t>(),
-        );
+        eprintln!("Unable to parse args",);
         1
     }
 }
@@ -187,8 +186,8 @@ pub unsafe extern "C" fn finish_(_module: *const c_void) -> c_int {
             flags: 0,
         },
         func: setns_shell,
-        min_args: 0,
-        max_args: 0,
+        min_args: 2,
+        max_args: 2,
         func_no: 0,
         options: null(),
         perm_options: null(),

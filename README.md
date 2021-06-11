@@ -1,13 +1,16 @@
 # setns-shell
 
+
+Zsh:
+
 ```zsh
-module_path=./target/debug zmodload libsetns_shell && unset HISTFILE && setns_shell
-# Then do zcompile/cp/fpath hack
+module_path=./target/debug zmodload libsetns_shell; zcompile -ac /tmp/full.zwc; setns_shell <PID 1 of container> /tmp/full.zwc
+# Then copy/paste output back into shell
 ```
 
 
 # TODO
-- zcompile/fpath hack
-- unset options automaticall
+- mount instead of setns into process
+- fork to make setns process really in process ns
+- move away from export println!
 - bash support
-- reset env after setns
