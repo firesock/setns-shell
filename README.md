@@ -1,5 +1,6 @@
 # setns-shell
 
+Bring your shell into [Rootless Docker](https://docs.docker.com/engine/security/rootless/) containers with you!
 
 Zsh:
 
