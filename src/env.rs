@@ -11,7 +11,7 @@ impl NSEnv {
         // login system is responsible for HOME envvar from kernel
         // Cribbed the list of envvars to set from an absolutely cursory
         // look at what OpenSSH does
-        let (username, home, hostname) = unsafe {
+        let (username, home, hostname, shell) = unsafe {
             // TODO: nulls
             let passwd = libc::getpwuid(libc::geteuid());
             // TODO: Think harder about string conversion
@@ -20,6 +20,10 @@ impl NSEnv {
                 .unwrap()
                 .to_owned();
             let home = std::ffi::CStr::from_ptr((*passwd).pw_dir)
+                .to_str()
+                .unwrap()
+                .to_owned();
+            let shell = std::ffi::CStr::from_ptr((*passwd).pw_shell)
                 .to_str()
                 .unwrap()
                 .to_owned();
@@ -35,35 +39,23 @@ impl NSEnv {
                 hostname_str.drain(..).take_while(|&b| b != 0).collect(),
             )
             .unwrap();
-            (username, home, hostname)
+            (username, home, hostname, shell)
         };
 
-        let sh_output = std::process::Command::new("/bin/sh")
+        let sh_output = std::process::Command::new(shell)
             .arg("-l")
             .arg("-c")
-            .arg("printenv")
+            .arg("echo -n $PATH")
             .env_clear()
             .output()
             .unwrap()
             .stdout;
 
-        // TODO: Something smarter about multiline envvars
-        // TODO: Only being used for PATH now
-        let mut environ: std::collections::HashMap<String, String> =
-            String::from_utf8(sh_output)
-                .unwrap()
-                .lines()
-                .filter(|s| s.contains("="))
-                .map(|s| s.split("="))
-                .map(|mut s| (s.next().unwrap(), s.next().unwrap()))
-                .map(|(k, v)| (k.to_owned(), v.to_owned()))
-                .collect();
-
         Self {
             username: username,
             home: home,
             hostname: hostname,
-            path: environ.remove("PATH").unwrap(),
+            path: String::from_utf8(sh_output).unwrap(),
         }
     }
 
