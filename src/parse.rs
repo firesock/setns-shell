@@ -4,6 +4,9 @@ use std::ffi::CStr;
 #[derive(Debug)]
 struct NullPtr;
 
+const ARRAY_SIZE: usize = 2;
+pub const ARG_COUNT: i32 = ARRAY_SIZE as i32;
+
 impl std::fmt::Display for NullPtr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Null pointer received")
@@ -28,7 +31,6 @@ impl Args {
             };
 
             // We pray that the array is the right size
-            const ARRAY_SIZE: usize = 2;
             let cstr_args = std::slice::from_raw_parts(args, ARRAY_SIZE)
                 .iter()
                 .map(|&p| {
