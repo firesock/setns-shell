@@ -14,6 +14,11 @@ module_path=./target/debug zmodload libsetns_shell; zcompile -ac /tmp/full.zwc; 
 # TODO
 - wrapper script using source
 - mount instead of setns into process
-- fork to make setns process really in process ns
 - move away from export println!
 - bash support
+
+# Caveats and Limitations
+- Process that `setns` is called in doesn't enter designated PID namespace, only
+remembers it for it's child processes. This is by design of the syscall, and
+shouldn't really matter unless the running process needs to play with in-container
+process' without doing a fork-and-exec.
