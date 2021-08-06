@@ -69,14 +69,33 @@ impl NSEnv {
         zwc_file.sync_data().unwrap();
         std::mem::drop(zwc_file);
 
-        // set_var confuses the shell
-        println!("unset HISTFILE;");
-        println!("export {}={};", "HOME", &self.home);
-        println!("export {}={};", "USER", &self.username);
-        println!("export {}={};", "HOSTNAME", &self.hostname);
-        println!("export {}={};", "PATH", &self.path);
+        // set_var confuses the shell - so we use TIOSCTI ioctl to schedule a
+        // source of a prebuilt script to fixup our state
+        let init_path = std::env::temp_dir().join("init.zsh");
+        let mut init_file = std::fs::File::create(&init_path).unwrap();
+        writeln!(&mut init_file, "unset HISTFILE;").unwrap();
+        writeln!(&mut init_file, "export HOME={};", &self.home).unwrap();
+        writeln!(&mut init_file, "export USER={};", &self.username).unwrap();
+        writeln!(&mut init_file, "export HOST={};", &self.hostname).unwrap();
+        writeln!(&mut init_file, "export HOSTNAME={};", &self.hostname)
+            .unwrap();
+        writeln!(&mut init_file, "export PATH={};", &self.path).unwrap();
+        writeln!(&mut init_file, "export FPATH={};", zwc_path.display())
+            .unwrap();
+        writeln!(&mut init_file, "cd {};", &self.home).unwrap();
+        init_file.sync_data().unwrap();
+        std::mem::drop(init_file);
 
-        println!("export {}={};", "FPATH", zwc_path.display());
-        println!("cd {};", &self.home);
+        use std::os::unix::io::AsRawFd;
+        let source_str = format!("source {}\n", init_path.display());
+        let raw_fd = std::io::stdin().as_raw_fd();
+
+        for b in source_str.as_bytes() {
+            let c = *b as i8;
+            unsafe {
+                // TODO: errors
+                libc::ioctl(raw_fd, libc::TIOCSTI, &c as *const libc::c_char);
+            }
+        }
     }
 }

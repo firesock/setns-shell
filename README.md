@@ -14,7 +14,6 @@ module_path=./target/debug zmodload libsetns_shell; zcompile -ac /tmp/full.zwc; 
 # TODO
 - wrapper script using source
 - mount instead of setns into process
-- move away from export println!
 - bash support
 
 # Caveats and Limitations
